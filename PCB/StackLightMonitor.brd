@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE eagle SYSTEM "eagle.dtd">
-<eagle version="8.1.0">
+<eagle version="8.1.1">
 <drawing>
 <settings>
 <setting alwaysvectorfont="no"/>
@@ -174,7 +174,7 @@
 <text x="25.4" y="30.48" size="1.778" layer="21">R</text>
 <text x="49.53" y="28.575" size="1.778" layer="21">+</text>
 <text x="59.69" y="28.575" size="1.778" layer="21">G</text>
-<text x="32.385" y="58.42" size="1.778" layer="21" font="vector" rot="R270">DKT01 2017 Rev A</text>
+<text x="32.385" y="58.42" size="1.778" layer="21" font="vector" rot="R270">DKT01 2017 Rev B</text>
 <text x="34.925" y="59.055" size="1.4224" layer="21" font="vector" rot="R270">https://github.com/dkt01</text>
 <text x="33.655" y="33.655" size="1.016" layer="22" rot="MR270">GND</text>
 <text x="33.655" y="24.765" size="1.016" layer="22" rot="MR270">3.3</text>
@@ -182,9 +182,9 @@
 <text x="38.735" y="33.655" size="1.016" layer="22" rot="MR270">SCK</text>
 <text x="41.275" y="34.29" size="1.016" layer="22" rot="MR270">MISO</text>
 <text x="38.735" y="24.765" size="1.016" layer="22" rot="MR270">MOSI</text>
-<text x="44.45" y="15.875" size="1.27" layer="21" rot="R90">I</text>
-<text x="43.18" y="19.05" size="1.27" layer="21" rot="R270">-</text>
-<text x="43.18" y="22.225" size="1.27" layer="21" rot="R270">O</text>
+<text x="44.45" y="15.875" size="1.27" layer="21" rot="R90">-</text>
+<text x="43.18" y="19.685" size="1.27" layer="21" rot="R270">O</text>
+<text x="43.18" y="22.225" size="1.27" layer="21" rot="R270">I</text>
 </plain>
 <libraries>
 <library name="SparkFun-Connectors">
