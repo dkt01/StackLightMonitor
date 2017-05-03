@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <script>
+function ConnectToServer()
+{
+  let url = document.getElementById("server").value;
+  url += "/api/json?tree=jobs[name,url]";
+  fetch(url)//, {mode: 'no-cors'})
+            .then(function(response)
+            {
+              console.log(response);
+              return response.json();
+            })
+            .then((out) => GetJobs(out))
+            .then(document.getElementById("server").style.backgroundColor="")
+            .catch(ClearJobs());
+}
+
+function ClearJobs()
+{
+  var jobsSelector = document.getElementById("job");
+  while (jobsSelector.length > 0)
+  {
+    jobsSelector.remove(0);
+  }
+  document.getElementById("server").style.backgroundColor="red";
+}
+
+function GetJobs(apiResponse)
+{
+  ClearJobs();
+  var jobsSelector = document.getElementById("job");
+  for(job in apiResponse["jobs"])
+  {
+    var option = document.createElement("option");
+    option.text = job["name"];
+    option.value = job["url"];
+    jobsSelector.add(option);
+  }
+}
+
+function Save()
+{
+  //TODO: Validate then PUT request to Arduino
+}
+    </script>
+  </head>
+  <body>
+    <h1>
+      <a href="https://github.com/dkt01/StackLightMonitor">Stack Light Monitor</a>
+    </h1>
+    <form>
+      Server URL:<br>
+      <input type="url" name="server" id="server">
+      <button type="button" onclick="ConnectToServer()">Connect</button><br>
+      Job:<br>
+      <select name="job" id="job"></select><br>
+      <button type="button" onclick="Save()">Save</button>
+    </form>
+  </body>
+</html>
