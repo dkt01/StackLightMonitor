@@ -4,17 +4,23 @@
     <script>
 function ConnectToServer()
 {
-  let url = document.getElementById("server").value;
-  url += "/api/json?tree=jobs[name,url]";
-  fetch(url)//, {mode: 'no-cors'})
-            .then(function(response)
-            {
-              console.log(response);
-              return response.json();
-            })
-            .then((out) => GetJobs(out))
-            .then(document.getElementById("server").style.backgroundColor="")
-            .catch(ClearJobs());
+  var url = document.getElementById("server").value;
+  url += "/api/json?tree=jobs[name,url]&jsonp=GetJobs";
+
+  var tag = document.createElement("script");
+  tag.src = url;
+  tag.id = "JSONPURL";
+
+  // Remove old jsonp from document
+  var oldTag = document.getElementById("JSONPURL");
+  if(null != oldTag)
+  {
+    ClearJobs();
+    oldTag.outerHTML="";
+    delete oldTag;
+  }
+
+  document.getElementsByTagName("head")[0].appendChild(tag);
 }
 
 function ClearJobs()
@@ -24,25 +30,53 @@ function ClearJobs()
   {
     jobsSelector.remove(0);
   }
-  document.getElementById("server").style.backgroundColor="red";
+  document.getElementById("server").style.backgroundColor="#ddaaaa";
 }
 
 function GetJobs(apiResponse)
 {
   ClearJobs();
-  var jobsSelector = document.getElementById("job");
-  for(job in apiResponse["jobs"])
+  if('jobs' in apiResponse)
   {
-    var option = document.createElement("option");
-    option.text = job["name"];
-    option.value = job["url"];
-    jobsSelector.add(option);
+    document.getElementById("server").style.backgroundColor=""
+    var jobsSelector = document.getElementById("job");
+    for(var i = 0; i < apiResponse["jobs"].length; i++)
+    {
+      var option = document.createElement("option");
+      option.text = apiResponse["jobs"][i]["name"];
+      option.value = apiResponse["jobs"][i]["url"];
+      jobsSelector.add(option);
+    }
   }
 }
 
 function Save()
 {
-  //TODO: Validate then PUT request to Arduino
+  var request = new XMLHttpRequest();
+  try
+  {
+    var jobsSelector = document.getElementById("job");
+    var queryURL = jobsSelector.options[jobsSelector.selectedIndex].value;
+    queryURL += "/lastBuild/api/json?tree=building,number,result,url";
+
+    // Check if URL is accessible
+    request.open('GET', queryURL, false);
+    request.send();
+  }
+  catch(e)
+  {
+    request.status = 404;
+  }
+
+  if(request.status === 404)
+  {
+    alert("Could not reach Jenkins job API");
+  }
+  else
+  {
+    alert("URL reachable!\n" + queryURL);
+    //TODO: Send to Arduino
+  }
 }
     </script>
   </head>
