@@ -2,27 +2,56 @@
 <html>
   <head>
     <script>
+////////////////////////////////////////////////////////////////////////////////
+///  @brief Attempts a connection to the server specified in the server URL
+///         field.  If the server has an accessible API, jobs are fetched and
+///         the selector is populated.  If unsuccessful, the field color turns
+///         red.
+////////////////////////////////////////////////////////////////////////////////
 function ConnectToServer()
 {
   var url = document.getElementById("server").value;
-  url += "/api/json?tree=jobs[name,url]&jsonp=GetJobs";
+  url += "/api/json?tree=jobs[name,url]";
 
-  var tag = document.createElement("script");
-  tag.src = url;
-  tag.id = "JSONPURL";
+  ClearJobs();
 
-  // Remove old jsonp from document
-  var oldTag = document.getElementById("JSONPURL");
-  if(null != oldTag)
+  // Use XMLHttpRequest to get JSON data from Jenkins API.  This supports older
+  // web browsers and sidesteps CORS restrictions
+  var client = new XMLHttpRequest();
+  try
   {
-    ClearJobs();
-    oldTag.outerHTML="";
-    delete oldTag;
+    client.open('GET', url);
+  }
+  catch(e)
+  {
+    // This indicates bad URL
+    return;
   }
 
-  document.getElementsByTagName("head")[0].appendChild(tag);
+  client.onload = function()
+  {
+    var jsonData;
+    try
+    {
+      jsonData = JSON.parse(client.responseText);
+    }
+    catch(e)
+    {
+      // This indicates non-api data
+      return;
+    }
+
+    // Use json data to set jobs selector
+    GetJobs(jsonData);
+  }
+
+  client.send();
 }
 
+////////////////////////////////////////////////////////////////////////////////
+///  @brief Removes all jobs from job selector field and sets URL field color
+///         red to indicate no jobs available
+////////////////////////////////////////////////////////////////////////////////
 function ClearJobs()
 {
   var jobsSelector = document.getElementById("job");
@@ -33,10 +62,16 @@ function ClearJobs()
   document.getElementById("server").style.backgroundColor="#ddaaaa";
 }
 
+////////////////////////////////////////////////////////////////////////////////
+///  @brief Populates job selector field with job names and URLs and resets
+///         server URL field color if successful
+///  @param apiResponse JSON object containing list of jobs.  Each job needs to
+///                     have a "name" and "url" field.
+////////////////////////////////////////////////////////////////////////////////
 function GetJobs(apiResponse)
 {
   ClearJobs();
-  if('jobs' in apiResponse)
+  if(typeof apiResponse === 'object' && 'jobs' in apiResponse)
   {
     document.getElementById("server").style.backgroundColor=""
     var jobsSelector = document.getElementById("job");
@@ -50,9 +85,13 @@ function GetJobs(apiResponse)
   }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+///  @brief Validates configuration fields by sending request to job API
+///         endpoint and sends configuration to Arduino if successful.
+////////////////////////////////////////////////////////////////////////////////
 function Save()
 {
-  var request = new XMLHttpRequest();
+  var apiRequest = new XMLHttpRequest();
   try
   {
     var jobsSelector = document.getElementById("job");
@@ -60,22 +99,101 @@ function Save()
     queryURL += "/lastBuild/api/json?tree=building,number,result,url";
 
     // Check if URL is accessible
-    request.open('GET', queryURL, false);
-    request.send();
+    apiRequest.open('GET', queryURL, false);
+    apiRequest.send();
   }
   catch(e)
   {
-    request.status = 404;
+    apiRequest.status = 404;
   }
 
-  if(request.status === 404)
+  if(apiRequest.status === 404)
   {
     alert("Could not reach Jenkins job API");
   }
   else
   {
-    alert("URL reachable!\n" + queryURL);
-    //TODO: Send to Arduino
+    var arduinoRequest = new XMLHttpRequest();
+    try
+    {
+      arduinoRequest.open('PUT', "apiURL", false);
+      arduinoRequest.send(queryURL);
+      alert("Set job API URL to:\n" + queryURL);
+    }
+    catch(e)
+    {
+      alert("Could not save configuration");
+    }
+  }
+}
+
+// Get active configuration on page load
+window.onload = function()
+{
+  var client = new XMLHttpRequest();
+  try
+  {
+    client.open('GET', "apiURL");
+  }
+  catch(e)
+  {
+    return;
+  }
+
+  // Callback once Arduino responds
+  client.onload = function()
+  {
+    // Trim off api-specific URL
+    var apiURL = client.responseText;
+    var apiSuffixIndex = apiURL.indexOf("/lastBuild/api/");
+
+    // Response string doesn't contain an API URL
+    if(apiSuffixIndex === -1)
+    {
+      return;
+    }
+
+    var jobURL = apiURL.substring(0,apiSuffixIndex);
+
+    // Split into URL components to extract name and server URL
+    var splitURL = jobURL.split("/");
+
+    // URL too short
+    if(splitURL.length < 1)
+    {
+      return;
+    }
+
+    // Find last non-empty URL component, which is the job name
+    var i = splitURL.length - 1;
+    while(i >= 0 && splitURL[i] === "")
+    {
+      i--;
+    }
+
+    // Job name not found
+    if(i === 0)
+    {
+      return;
+    }
+
+    var jobName = splitURL[i];
+
+    // Format is [serverURL]/job/[jobName]/[apiSuffix]
+    // Make sure a server name exists at beginning of URL
+    // Server is not validated here
+    if((i - 2) <= 0)
+    {
+      return;
+    }
+
+    // Reform URL with forward slashes for display
+    var serverName = splitURL.slice(0,i-1).join("/");
+
+    // Populate configuration fields
+    var dummyJobs = {jobs:[{name:jobName,url:jobURL}]};
+    GetJobs(dummyJobs);
+    document.getElementById("server").value = serverName;
   }
 }
     </script>
