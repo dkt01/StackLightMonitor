@@ -21,6 +21,7 @@ StackLight::StackLight(const uint8_t nModules, const uint8_t* modulePins):
 
     // Initialize pin modes
     pinMode(m_modulePins[i], OUTPUT);
+    analogWrite(modulePins[i], 0);
   }
 
   // Populate Gamma correction lookup table
@@ -37,12 +38,7 @@ StackLight::StackLight(const uint8_t nModules, const uint8_t* modulePins):
   }
 
   // Start test pattern at initialization
-  m_test = millis();
-  // If initialization happens before 1ms, ensure test sequence still runs
-  if(0 == m_test)
-  {
-    m_test = 1;
-  }
+  m_test = -1;
 }
 
 
@@ -75,6 +71,11 @@ StackLight::~StackLight()
 void StackLight::update()
 {
   m_now = millis();
+  // Start test pattern on first update call
+  if(m_test == -1)
+  {
+    m_test = m_now;
+  }
   if(m_test > 0)
   {
     // Run test sequence
