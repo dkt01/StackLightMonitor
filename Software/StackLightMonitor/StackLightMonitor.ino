@@ -3,8 +3,10 @@
 #include <EEPROM.h>
 
 #include "StackLight.h"
+#include "config_html.h"
 
 #define STATIC 0  // set to 1 to disable DHCP (adjust myip/gwip values below)
+#define BUFFERSIZE 1024
 
 #if STATIC
 // ethernet interface ip address
@@ -18,8 +20,7 @@ static byte gwip[] = {
 // ethernet mac address - must be unique on your network
 static byte mymac[] = { 0x44,0x4b,0x54,0x53,0x4c,0x4d };
 
-byte Ethernet::buffer[1000]; // tcp/ip send and receive buffer
-BufferFiller bfill;
+byte Ethernet::buffer[BUFFERSIZE]; // tcp/ip send and receive buffer
 
 #define RED    0
 #define YELLOW 1
@@ -92,29 +93,71 @@ void loop()
 
   if (pos)
   {
-    bfill = ether.tcpOffset();
+    uint16_t startPoint = 0; // Multi-packet response
+    int sz = BUFFERSIZE - pos;
     char* data = (char*) Ethernet::buffer + pos;
-    if (strncmp("GET /", data, 5) == 0)
+    char* sendData = NULL;
+    bool complete = false;
+
+    ether.httpServerReplyAck();
+
+    if (strncmp("GET / ", data, 6) == 0)
     {
       Serial.println("GET /:");
       Serial.println(data);
-      bfill.emit_p(http_OK);
+      sendData = config_html;
+      if(sizeof(config_html) < sz)
+      {
+        sz = sizeof(config_html);
+        complete = true;
+      }
+      else
+      {
+        do
+        {
+          memcpy_P(data, sendData + startPoint, sz); // Copy data from flash to RAM
+          ether.httpServerReply_with_flags(sz, TCP_FLAGS_ACK_V);
+          startPoint += sz;
+          sz = BUFFERSIZE - pos;
+          if(sizeof(config_html) - startPoint < sz)
+          {
+            sz = sizeof(config_html) - startPoint;
+            complete = true;
+          }
+        } while (false == complete);
+        sendData += startPoint;
+      }
     }
     else if (strncmp("PUT apiURL", data, 10) == 0)
     {
       Serial.println("PUT apiURL:");
       Serial.println(data);
+      sendData = http_OK;
+      if(sizeof(http_OK) < sz)
+      {
+        sz = sizeof(http_OK);
+        complete = true;
+      }
     }
     else
     {
       // Page not found
       Serial.println("???:");
       Serial.println(data);
-      bfill.emit_p(http_Unauthorized);
+      sendData = http_Unauthorized;
+      if(sizeof(http_Unauthorized) < sz)
+      {
+        sz = sizeof(http_Unauthorized);
+        complete = true;
+      }
     }
 
     // Send http response
-    ether.httpServerReply(bfill.position());
+    memcpy_P(data, sendData, sz); // Copy data from flash to RAM
+    // ether.httpServerReply(sz-1);
+    ether.httpServerReply_with_flags(sz,TCP_FLAGS_ACK_V|TCP_FLAGS_PUSH_V);
+    ether.httpServerReply_with_flags(0,TCP_FLAGS_ACK_V|TCP_FLAGS_FIN_V);
+    startPoint = 0;
   }
 
   // put your main code here, to run repeatedly:
