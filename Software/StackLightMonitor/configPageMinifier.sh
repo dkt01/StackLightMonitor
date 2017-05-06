@@ -54,4 +54,4 @@ cat "$DIR/$CONFIG_PAGE_MIN" >> "$DIR/$CONFIG_HEADER"
 echo "\";" >> "$DIR/$CONFIG_HEADER"
 
 # Delete temporary file
-# rm "$DIR/$CONFIG_PAGE_MIN"
+rm "$DIR/$CONFIG_PAGE_MIN"

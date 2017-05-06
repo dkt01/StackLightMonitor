@@ -1,2 +1,4 @@
 config_html.h
 config.min.html
+*.ico
+favicon_ico.h

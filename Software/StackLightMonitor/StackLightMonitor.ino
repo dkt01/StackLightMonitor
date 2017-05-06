@@ -4,6 +4,7 @@
 
 #include "StackLight.h"
 #include "config_html.h"
+#include "favicon_ico.h"
 
 #define STATIC 0  // set to 1 to disable DHCP (adjust myip/gwip values below)
 #define BUFFERSIZE 1024
@@ -128,9 +129,42 @@ void loop()
         sendData += startPoint;
       }
     }
-    else if (strncmp("PUT apiURL", data, 10) == 0)
+    else if (strncmp("GET /favicon.ico", data, 16) == 0)
     {
-      Serial.println("PUT apiURL:");
+      Serial.println("GET /favicon.ico:");
+      Serial.println(data);
+      sendData = favicon_ico;
+      if(sizeof(favicon_ico) < sz)
+      {
+        sz = sizeof(favicon_ico);
+        complete = true;
+      }
+      else
+      {
+        do
+        {
+          memcpy_P(data, sendData + startPoint, sz); // Copy data from flash to RAM
+          ether.httpServerReply_with_flags(sz, TCP_FLAGS_ACK_V);
+          startPoint += sz;
+          sz = BUFFERSIZE - pos;
+          if(sizeof(favicon_ico) - startPoint < sz)
+          {
+            sz = sizeof(favicon_ico) - startPoint;
+            complete = true;
+          }
+        } while (false == complete);
+        sendData += startPoint;
+      }
+    }
+    else if (strncmp("GET /apiURL", data, 10) == 0)
+    {
+      Serial.println("GET /apiURL:");
+      Serial.println(data);
+      sz = sizeof(http_OK);
+      sendData = http_OK;
+    else if (strncmp("PUT /apiURL", data, 10) == 0)
+    {
+      Serial.println("PUT /apiURL:");
       Serial.println(data);
       sendData = http_OK;
       if(sizeof(http_OK) < sz)

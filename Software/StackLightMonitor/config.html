@@ -129,7 +129,7 @@ function Save()
     var arduinoRequest = new XMLHttpRequest();
     try
     {
-      arduinoRequest.open("PUT", "apiURL", false);
+      arduinoRequest.open("PUT", "/apiURL", false);
       arduinoRequest.send(queryURL);
       alert("Set job API URL to:\n" + queryURL);
     }
@@ -148,7 +148,7 @@ window.onload = function()
   var client = new XMLHttpRequest();
   try
   {
-    client.open("GET", "apiURL");
+    client.open("GET", "/apiURL");
   }
   catch(e)
   {
