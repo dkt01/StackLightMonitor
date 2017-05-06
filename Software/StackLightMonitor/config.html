@@ -10,6 +10,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 function ConnectToServer()
 {
+  "use strict";
   var url = document.getElementById("server").value;
   url += "/api/json?tree=jobs[name,url]";
 
@@ -20,11 +21,12 @@ function ConnectToServer()
   var client = new XMLHttpRequest();
   try
   {
-    client.open('GET', url);
+    client.open("GET", url);
   }
   catch(e)
   {
     // This indicates bad URL
+    console.log(e);
     return;
   }
 
@@ -38,15 +40,16 @@ function ConnectToServer()
     catch(e)
     {
       // This indicates non-api data
+      console.log(e);
       return;
     }
 
     // Use json data to set jobs selector
     GetJobs(jsonData);
-  }
+  };
 
   client.send();
-}
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 ///  @brief Removes all jobs from job selector field and sets URL field color
@@ -54,13 +57,14 @@ function ConnectToServer()
 ////////////////////////////////////////////////////////////////////////////////
 function ClearJobs()
 {
+  "use strict";
   var jobsSelector = document.getElementById("job");
   while (jobsSelector.length > 0)
   {
     jobsSelector.remove(0);
   }
   document.getElementById("server").style.backgroundColor="#ddaaaa";
-}
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 ///  @brief Populates job selector field with job names and URLs and resets
@@ -70,12 +74,14 @@ function ClearJobs()
 ////////////////////////////////////////////////////////////////////////////////
 function GetJobs(apiResponse)
 {
+  "use strict";
+  var i = 0;
   ClearJobs();
-  if(typeof apiResponse === 'object' && 'jobs' in apiResponse)
+  if(typeof apiResponse === "object" && "jobs" in apiResponse)
   {
-    document.getElementById("server").style.backgroundColor=""
+    document.getElementById("server").style.backgroundColor="";
     var jobsSelector = document.getElementById("job");
-    for(var i = 0; i < apiResponse["jobs"].length; i++)
+    for(i = 0; i < apiResponse["jobs"].length; i++)
     {
       var option = document.createElement("option");
       option.text = apiResponse["jobs"][i]["name"];
@@ -83,7 +89,7 @@ function GetJobs(apiResponse)
       jobsSelector.add(option);
     }
   }
-}
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 ///  @brief Validates configuration fields by sending request to job API
@@ -91,6 +97,7 @@ function GetJobs(apiResponse)
 ////////////////////////////////////////////////////////////////////////////////
 function Save()
 {
+  "use strict";
   var apiRequest = new XMLHttpRequest();
   try
   {
@@ -99,11 +106,12 @@ function Save()
     queryURL += "/lastBuild/api/json?tree=building,number,result,url";
 
     // Check if URL is accessible
-    apiRequest.open('GET', queryURL, false);
+    apiRequest.open("GET", queryURL, false);
     apiRequest.send();
   }
   catch(e)
   {
+    console.log(e);
     apiRequest.status = 404;
   }
 
@@ -116,24 +124,26 @@ function Save()
     var arduinoRequest = new XMLHttpRequest();
     try
     {
-      arduinoRequest.open('PUT', "apiURL", false);
+      arduinoRequest.open("PUT", "apiURL", false);
       arduinoRequest.send(queryURL);
       alert("Set job API URL to:\n" + queryURL);
     }
     catch(e)
     {
+      console.log(e);
       alert("Could not save configuration");
     }
   }
-}
+};
 
 // Get active configuration on page load
 window.onload = function()
 {
+  "use strict";
   var client = new XMLHttpRequest();
   try
   {
-    client.open('GET', "apiURL");
+    client.open("GET", "apiURL");
   }
   catch(e)
   {
@@ -194,8 +204,8 @@ window.onload = function()
     var dummyJobs = {jobs:[{name:jobName,url:jobURL}]};
     GetJobs(dummyJobs);
     document.getElementById("server").value = serverName;
-  }
-}
+  };
+};
     </script>
   </head>
   <body>
