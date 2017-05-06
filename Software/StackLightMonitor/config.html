@@ -2,6 +2,8 @@
 <html>
   <head>
     <script>
+// Proxy to circumvent CORS protection on sites
+var CORSPROXY = "https://cors-anywhere.herokuapp.com/";
 ////////////////////////////////////////////////////////////////////////////////
 ///  @brief Attempts a connection to the server specified in the server URL
 ///         field.  If the server has an accessible API, jobs are fetched and
@@ -21,7 +23,8 @@ function ConnectToServer()
   var client = new XMLHttpRequest();
   try
   {
-    client.open("GET", url);
+    client.open("GET", CORSPROXY+url);
+    client.setRequestHeader("X-Requested-With", "XMLHttpRequest");
   }
   catch(e)
   {
@@ -99,6 +102,7 @@ function Save()
 {
   "use strict";
   var apiRequest = new XMLHttpRequest();
+  var returnStatus = 404;
   try
   {
     var jobsSelector = document.getElementById("job");
@@ -106,16 +110,17 @@ function Save()
     queryURL += "/lastBuild/api/json?tree=building,number,result,url";
 
     // Check if URL is accessible
-    apiRequest.open("GET", queryURL, false);
+    apiRequest.open("GET", CORSPROXY+queryURL, false);
+    apiRequest.setRequestHeader("X-Requested-With", "XMLHttpRequest");
     apiRequest.send();
+    returnStatus = apiRequest.status;
   }
   catch(e)
   {
     console.log(e);
-    apiRequest.status = 404;
   }
 
-  if(apiRequest.status === 404)
+  if(returnStatus !== 200)
   {
     alert("Could not reach Jenkins job API");
   }
