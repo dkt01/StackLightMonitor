@@ -46,6 +46,52 @@ const char http_Unauthorized[] PROGMEM =
 "Content-Type: text/html\r\n\r\n"
 "<h1>401 Unauthorized</h1>";
 
+void SaveURL(char* urlString)
+{
+  Serial.println("Saving URL...");
+  // Start at address 1 because 0 is a version identifier
+  uint16_t eepromAddress = 1;
+  // Copy url string to EEPROM
+  while(*urlString != '\0')
+  {
+    EEPROM.write(eepromAddress, *urlString);
+    Serial.print("\t");
+    Serial.print(eepromAddress,HEX);
+    Serial.print(":");
+    Serial.println(*urlString,HEX);
+    eepromAddress++;
+    urlString++;
+  }
+  // Write null stop character at end of URL
+  EEPROM.write(eepromAddress, '\0');
+  Serial.print("\t");
+  Serial.print(eepromAddress,HEX);
+  Serial.print(":");
+  Serial.println(*urlString,HEX);
+}
+
+uint16_t LoadURL(char* urlString)
+{
+  Serial.println("Loading URL...");
+  // Start at address 1 because 0 is a version identifier
+  uint16_t eepromAddress = 1;
+  char eepromByte;
+  // Copy EEPROM URL to provided buffer.  Null stop character will be added to end
+  do
+  {
+    eepromByte = EEPROM.read(eepromAddress);
+    Serial.print("\t");
+    Serial.print(eepromAddress,HEX);
+    Serial.print(":");
+    Serial.println(eepromByte,HEX);
+    *urlString = eepromByte;
+    eepromAddress++;
+    urlString++;
+  } while(eepromByte != '\0');
+
+  return eepromAddress - 1;
+}
+
 void setup()
 {
   Serial.begin(57600);
@@ -91,6 +137,8 @@ void setup()
 void loop()
 {
   word pos = ether.packetLoop(ether.packetReceive());
+  static bool pendingPut = false;
+  bool generalMemCopy = true;
 
   if (pos)
   {
@@ -160,8 +208,12 @@ void loop()
     {
       Serial.println("GET /apiURL:");
       Serial.println(data);
+      generalMemCopy = false; // Doing memcopy here to build response
       sz = sizeof(http_OK);
-      sendData = http_OK;
+      memcpy_P(data, http_OK, sz);
+      uint16_t urlSize = LoadURL(data+sz-1); // Start at null character from header string
+      sz += (urlSize - 2); // Don't send null characters
+    }
     else if (strncmp("PUT /apiURL", data, 10) == 0)
     {
       Serial.println("PUT /apiURL:");
@@ -171,10 +223,17 @@ void loop()
       {
         sz = sizeof(http_OK);
         complete = true;
+        pendingPut = true;
       }
     }
     else
     {
+      if(pendingPut)
+      {
+        Serial.println("PUT data:");
+        Serial.println(data);
+        SaveURL(data);
+      }
       // Page not found
       Serial.println("???:");
       Serial.println(data);
@@ -187,7 +246,10 @@ void loop()
     }
 
     // Send http response
-    memcpy_P(data, sendData, sz); // Copy data from flash to RAM
+    if(generalMemCopy)
+    {
+      memcpy_P(data, sendData, sz); // Copy data from flash to RAM
+    }
     // ether.httpServerReply(sz-1);
     ether.httpServerReply_with_flags(sz,TCP_FLAGS_ACK_V|TCP_FLAGS_PUSH_V);
     ether.httpServerReply_with_flags(0,TCP_FLAGS_ACK_V|TCP_FLAGS_FIN_V);

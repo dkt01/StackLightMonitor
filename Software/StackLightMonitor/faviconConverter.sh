@@ -26,7 +26,7 @@ type html-minifier >/dev/null 2>&1 || \
   }
 
 # Generate favicon icons at 16x16 and 32x32 resolutions
-convert "$DIR/$FAVICON_SVG" -alpha off -resize 32x32 -define icon:auto-resize="32,16" -colors 16 "$DIR/$FAVICON_ICO"
+convert "$DIR/$FAVICON_SVG" -transparent white -resize 32x32 -define icon:auto-resize="32,16" -colors 16 "$DIR/$FAVICON_ICO"
 
 # Write favicon to c++ header file as base64 encoded icon
 echo -n "$VAR_TYPE $VAR_NAME = \"$HTTP_HEADER" > "$DIR/$FAVICON_HEADER"
