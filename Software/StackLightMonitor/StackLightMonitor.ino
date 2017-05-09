@@ -31,7 +31,11 @@ byte Ethernet::buffer[BUFFERSIZE]; // tcp/ip send and receive buffer
 #define YPIN 6
 #define GPIN 10
 
-#define PERSISTENT_MEMORY_VERSION 1
+#define PERSISTENT_MEMORY_VERSION 2
+#define PERSISTENT_MEMORY_DOMAIN_ADDRESS 2
+#define PERSISTENT_MEMORY_PORT_ADDRESS 4
+#define PERSISTENT_MEMORY_ENDPOINT_ADDRESS 6
+#define PERSISTENT_MEMORY_DATA_START 8
 
 const uint8_t modulePins[3] = {RPIN, YPIN, GPIN};
 StackLight stackLight = StackLight(3, modulePins);
@@ -41,41 +45,131 @@ const char http_OK[] PROGMEM =
 "Content-Type: text/html\r\n"
 "Pragma: no-cache\r\n\r\n";
 
+const char http_BadRequest[] PROGMEM =
+"HTTP/1.0 400 Bad Request\r\n"
+"Content-Type: text/html\r\n\r\n"
+
 const char http_Unauthorized[] PROGMEM =
 "HTTP/1.0 401 Unauthorized\r\n"
 "Content-Type: text/html\r\n\r\n"
 "<h1>401 Unauthorized</h1>";
 
-void SaveURL(char* urlString)
+bool SaveURL(char* urlString)
 {
   Serial.println("Saving URL...");
-  // Start at address 1 because 0 is a version identifier
-  uint16_t eepromAddress = 1;
-  // Copy url string to EEPROM
-  while(*urlString != '\0')
+
+  // Indices within urlString where newline delimiters are
+  uint16_t divs[2];
+
+  // Ensure delimiter at end of domain exists and domain string is longer than
+  // four characters.  a.co style should be shortest domain.
+  divs[0] = strcspn(urlString, "\n");
+  if('\n' != urlString[divs[0]]
+     || divs[0] < 4)
   {
-    EEPROM.write(eepromAddress, *urlString);
-    Serial.print("\t");
-    Serial.print(eepromAddress,HEX);
-    Serial.print(":");
-    Serial.println(*urlString,HEX);
-    eepromAddress++;
-    urlString++;
+    return false;
   }
-  // Write null stop character at end of URL
+
+  // Ensure delimiter at end of port exists
+  divs[1] = strcspn(urlString + divs[0] + 1);
+  if('\n' != urlString[divs[1]])
+  {
+    return false;
+  }
+
+  // Ensure port string is at least one digit
+  if(divs[1] - divs[0] < 2)
+  {
+    return false;
+  }
+
+  // Ensure an API endpoint string exists
+  if('\0' == urlString[divs[1] + 1])
+  {
+    return false;
+  }
+
+  // Extract and validate port
+  uint16_t port = 0;
+  uint8_t charVal = 0;
+  for(uint16_t i = divs[0] + 1; i < divs[1]; i++)
+  {
+    // Validate character in range '0'-'9'
+    charVal = urlString[i] - 48;
+    if(charVal > 9)
+    {
+      return false;
+    }
+    // Port is decimal ascii
+    port *= 10;
+    port += charVal;
+  }
+
+  // Write pointer to domain string
+  uint16_t eepromAddress = PERSISTENT_MEMORY_DATA_START;
+  EEPROM.write(PERSISTENT_MEMORY_DOMAIN_ADDRESS, PERSISTENT_MEMORY_DATA_START & 0xFF);
+  EEPROM.write(PERSISTENT_MEMORY_DOMAIN_ADDRESS + 1,
+               (PERSISTENT_MEMORY_DATA_START >> 8) & 0xFF);
+  // Write domain string
+  for(uint16_t i = 0; i < divs[0]; i++)
+  {
+    EEPROM.write(eepromAddress, urlString[i]);
+    eepromAddress++;
+  }
+  // Write null stop character
   EEPROM.write(eepromAddress, '\0');
-  Serial.print("\t");
-  Serial.print(eepromAddress,HEX);
-  Serial.print(":");
-  Serial.println(*urlString,HEX);
+  eepromAddress++;
+
+  // Write pointer to port
+  EEPROM.write(PERSISTENT_MEMORY_PORT_ADDRESS, eepromAddress & 0xFF);
+  EEPROM.write(PERSISTENT_MEMORY_PORT_ADDRESS + 1,
+               (eepromAddress >> 8) & 0xFF);
+  // Write port
+  EEPROM.write(eepromAddress, port & 0xFF);
+  eepromAddress++;
+  EEPROM.write(eepromAddress, (port >> 8) & 0xFF);
+  eepromAddress++;
+
+  // Write pointer to API endpoint URL
+  EEPROM.write(PERSISTENT_MEMORY_ENDPOINT_ADDRESS, eepromAddress & 0xFF);
+  EEPROM.write(PERSISTENT_MEMORY_ENDPOINT_ADDRESS + 1,
+               (eepromAddress >> 8) & 0xFF);
+  // Write API endpoint URL
+  uint16_t i = divs[1] + 1;
+  do
+  {
+    EEPROM.write(eepromAddress, urlString[i]);
+    eepromAddress++;
+    i++;
+  } while(urlString[i] != '\0')
+  // Write null stop character
+  EEPROM.write(eepromAddress, '\0')
+
+  // Indicate successful write
+  return true;
 }
 
 uint16_t LoadURL(char* urlString)
 {
   Serial.println("Loading URL...");
-  // Start at address 1 because 0 is a version identifier
-  uint16_t eepromAddress = 1;
   char eepromByte;
+  uint16_t eepromAddress;
+
+  // Check that a URL has been written
+  eepromAddress = EEPROM.read(PERSISTENT_MEMORY_DOMAIN_ADDRESS);
+  eepromAddress |= ((EEPROM.read(PERSISTENT_MEMORY_DOMAIN_ADDRESS) & 0xFF) << 8);
+
+  // Invalid or no address, return empty string
+  if(eepromAddress < PERSISTENT_MEMORY_DATA_START)
+  {
+    urlString[0] = '\0';
+    return 0;
+  }
+
+  //TODO: finish this for port and endpoint
+
+
+  // Start at address 1 because 0 is a version identifier
   // Copy EEPROM URL to provided buffer.  Null stop character will be added to end
   do
   {
@@ -99,7 +193,8 @@ void setup()
   // Check if persistent memory appears to contain data for this application
   if(PERSISTENT_MEMORY_VERSION != EEPROM.read(0))
   {
-    EEPROM.write(1, 0); // Indicates empty string
+    EEPROM.write(PERSISTENT_MEMORY_DOMAIN_ADDRESS, 0); // Indicates empty string
+    EEPROM.write(PERSISTENT_MEMORY_DOMAIN_ADDRESS+1, 0); // Indicates empty string
     EEPROM.write(0, PERSISTENT_MEMORY_VERSION);
   }
 
@@ -232,16 +327,29 @@ void loop()
       {
         Serial.println("PUT data:");
         Serial.println(data);
-        SaveURL(data);
-      }
-      // Page not found
-      Serial.println("???:");
-      Serial.println(data);
-      sendData = http_Unauthorized;
-      if(sizeof(http_Unauthorized) < sz)
-      {
-        sz = sizeof(http_Unauthorized);
+        if(SaveURL(data))
+        {
+          sendData = http_OK;
+          sz = sizeof(http_OK);
+        }
+        else
+        {
+          sendData = http_BadRequest;
+          sz = sizeof(http_BadRequest);
+        }
         complete = true;
+      }
+      else
+      {
+        // Page not found
+        Serial.println("???:");
+        Serial.println(data);
+        sendData = http_Unauthorized;
+        if(sizeof(http_Unauthorized) < sz)
+        {
+          sz = sizeof(http_Unauthorized);
+          complete = true;
+        }
       }
     }
 

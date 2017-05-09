@@ -109,6 +109,42 @@ function Save()
     var queryURL = jobsSelector.options[jobsSelector.selectedIndex].value;
     queryURL += "/lastBuild/api/json?tree=building,number,result,url";
 
+    // Strip off protocol identifier.  Should be http:// or https:// or not provided
+    var protocolSepIndex = queryURL.search("://");
+    if(protocolSepIndex < 0 || protocolSepIndex > 5)
+    {
+      protocolSepIndex = -3;
+    }
+    var protocolStripURL = queryURL.substring(protocolSepIndex+3);
+
+    // Find beginning of API URL endpoint after first forward slash
+    var endpointSepIndex = protocolStripURL.search("/");
+    var endpointString = protocolStripURL.substring(endpointSepIndex);
+
+    // If port is specified, it should be indicated by a colon after the domain,
+    // but before the API URL endpoint
+    var portSepIndex = protocolStripURL.search(":");
+    var port = 80;
+    if(portSepIndex !== -1 && portSepIndex < endpointSepIndex)
+    {
+      port = parseInt(protocolStripURL.substring(portSepIndex,endpointSepIndex));
+      // Port must be 16-bit
+      if(port > 65535)
+      {
+        port = 80;
+      }
+    }
+
+    var domainString = protocolStripURL.substring(0,endpointSepIndex);
+
+    if(-1 !== portSepIndex)
+    {
+      domainString = protocolStripURL.substring(0,portSepIndex);
+    }
+
+    // Reconstruct queryURL to ensure the parsed URL will work
+    queryURL = domainString + ":" + port.toString() + endpointString;
+
     // Check if URL is accessible
     apiRequest.open("GET", CORSPROXY+queryURL, false);
     apiRequest.setRequestHeader("X-Requested-With", "XMLHttpRequest");
@@ -129,6 +165,8 @@ function Save()
     var arduinoRequest = new XMLHttpRequest();
     try
     {
+      var parsedData = domainString + '\n' + port + '\n' + endpointString;
+      alert(parsedData);
       arduinoRequest.open("PUT", "/apiURL", false);
       arduinoRequest.send(queryURL);
       alert("Set job API URL to:\n" + queryURL);
