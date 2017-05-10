@@ -47,16 +47,34 @@ const char http_OK[] PROGMEM =
 
 const char http_BadRequest[] PROGMEM =
 "HTTP/1.0 400 Bad Request\r\n"
-"Content-Type: text/html\r\n\r\n"
+"Content-Type: text/html\r\n\r\n";
 
 const char http_Unauthorized[] PROGMEM =
 "HTTP/1.0 401 Unauthorized\r\n"
 "Content-Type: text/html\r\n\r\n"
 "<h1>401 Unauthorized</h1>";
 
+uint16_t GetEEPROMWord(uint16_t address)
+{
+  uint16_t retval = (EEPROM.read(address) & 0xFF);
+  retval |= ((EEPROM.read(address + 1) & 0xFF) << 8);
+  return retval;
+}
+
+void SetEEPROMWord(uint16_t address, uint16_t val)
+{
+  EEPROM.write(address, val & 0xFF);
+  EEPROM.write(address + 1, (val >> 8) & 0xFF);
+}
+
+bool HaveURL()
+{
+  return GetEEPROMWord(PERSISTENT_MEMORY_DOMAIN_ADDRESS) >= PERSISTENT_MEMORY_DATA_START;
+}
+
 bool SaveURL(char* urlString)
 {
-  Serial.println("Saving URL...");
+  Serial.println(F("Saving URL..."));
 
   // Indices within urlString where newline delimiters are
   uint16_t divs[2];
@@ -67,25 +85,34 @@ bool SaveURL(char* urlString)
   if('\n' != urlString[divs[0]]
      || divs[0] < 4)
   {
+    Serial.println(F("Could not find first newline"));
     return false;
   }
 
   // Ensure delimiter at end of port exists
-  divs[1] = strcspn(urlString + divs[0] + 1);
+  divs[1] = strcspn(urlString + divs[0] + 1, "\n");
+  divs[1] += (divs[0] + 1);
   if('\n' != urlString[divs[1]])
   {
+    Serial.println(F("Could not find second newline"));
+    Serial.print(F("First newline at "));
+    Serial.println(divs[0],DEC);
+    Serial.print(F("Second newline at "));
+    Serial.println(divs[1],DEC);
     return false;
   }
 
   // Ensure port string is at least one digit
   if(divs[1] - divs[0] < 2)
   {
+    Serial.println(F("Port not present"));
     return false;
   }
 
   // Ensure an API endpoint string exists
   if('\0' == urlString[divs[1] + 1])
   {
+    Serial.println(F("API endpoint not present"));
     return false;
   }
 
@@ -98,6 +125,8 @@ bool SaveURL(char* urlString)
     charVal = urlString[i] - 48;
     if(charVal > 9)
     {
+      Serial.print(F("Invalid character "));
+      Serial.println(charVal, DEC);
       return false;
     }
     // Port is decimal ascii
@@ -107,9 +136,8 @@ bool SaveURL(char* urlString)
 
   // Write pointer to domain string
   uint16_t eepromAddress = PERSISTENT_MEMORY_DATA_START;
-  EEPROM.write(PERSISTENT_MEMORY_DOMAIN_ADDRESS, PERSISTENT_MEMORY_DATA_START & 0xFF);
-  EEPROM.write(PERSISTENT_MEMORY_DOMAIN_ADDRESS + 1,
-               (PERSISTENT_MEMORY_DATA_START >> 8) & 0xFF);
+  SetEEPROMWord(PERSISTENT_MEMORY_DOMAIN_ADDRESS, PERSISTENT_MEMORY_DATA_START);
+
   // Write domain string
   for(uint16_t i = 0; i < divs[0]; i++)
   {
@@ -121,19 +149,15 @@ bool SaveURL(char* urlString)
   eepromAddress++;
 
   // Write pointer to port
-  EEPROM.write(PERSISTENT_MEMORY_PORT_ADDRESS, eepromAddress & 0xFF);
-  EEPROM.write(PERSISTENT_MEMORY_PORT_ADDRESS + 1,
-               (eepromAddress >> 8) & 0xFF);
+  SetEEPROMWord(PERSISTENT_MEMORY_PORT_ADDRESS, eepromAddress);
+
   // Write port
-  EEPROM.write(eepromAddress, port & 0xFF);
-  eepromAddress++;
-  EEPROM.write(eepromAddress, (port >> 8) & 0xFF);
-  eepromAddress++;
+  SetEEPROMWord(eepromAddress, port);
+  eepromAddress += 2;
 
   // Write pointer to API endpoint URL
-  EEPROM.write(PERSISTENT_MEMORY_ENDPOINT_ADDRESS, eepromAddress & 0xFF);
-  EEPROM.write(PERSISTENT_MEMORY_ENDPOINT_ADDRESS + 1,
-               (eepromAddress >> 8) & 0xFF);
+  SetEEPROMWord(PERSISTENT_MEMORY_ENDPOINT_ADDRESS, eepromAddress);
+
   // Write API endpoint URL
   uint16_t i = divs[1] + 1;
   do
@@ -141,9 +165,9 @@ bool SaveURL(char* urlString)
     EEPROM.write(eepromAddress, urlString[i]);
     eepromAddress++;
     i++;
-  } while(urlString[i] != '\0')
+  } while(urlString[i] != '\0');
   // Write null stop character
-  EEPROM.write(eepromAddress, '\0')
+  EEPROM.write(eepromAddress, '\0');
 
   // Indicate successful write
   return true;
@@ -151,39 +175,102 @@ bool SaveURL(char* urlString)
 
 uint16_t LoadURL(char* urlString)
 {
-  Serial.println("Loading URL...");
-  char eepromByte;
-  uint16_t eepromAddress;
+  Serial.println(F("Loading URL..."));
+  uint16_t totalLength = 0;
 
   // Check that a URL has been written
-  eepromAddress = EEPROM.read(PERSISTENT_MEMORY_DOMAIN_ADDRESS);
-  eepromAddress |= ((EEPROM.read(PERSISTENT_MEMORY_DOMAIN_ADDRESS) & 0xFF) << 8);
-
-  // Invalid or no address, return empty string
-  if(eepromAddress < PERSISTENT_MEMORY_DATA_START)
+  if(!HaveURL())
   {
+    Serial.println(F("Don't have URL"));
     urlString[0] = '\0';
     return 0;
   }
 
-  //TODO: finish this for port and endpoint
+  // Output full formatted API URL string
+  totalLength += LoadDomain(urlString);
+  urlString[totalLength] = ':';
+  totalLength++;
+  totalLength += LoadPort(urlString + totalLength);
+  totalLength += LoadEndpoint(urlString + totalLength);
 
+  return totalLength;
+}
 
-  // Start at address 1 because 0 is a version identifier
-  // Copy EEPROM URL to provided buffer.  Null stop character will be added to end
+uint16_t LoadDomain(char* destString)
+{
+  uint16_t domainSize = 0;
+  uint8_t eepromByte = '\0';
+  // Get start address for domain string
+  uint16_t eepromAddress = GetEEPROMWord(PERSISTENT_MEMORY_DOMAIN_ADDRESS);
+
+  // If start address is invalid, return empty string
+  if(!HaveURL())
+  {
+    destString[0] = '\0';
+    return domainSize;
+  }
+
+  // Load null-terminated string from EEPROM
   do
   {
     eepromByte = EEPROM.read(eepromAddress);
-    Serial.print("\t");
-    Serial.print(eepromAddress,HEX);
-    Serial.print(":");
-    Serial.println(eepromByte,HEX);
-    *urlString = eepromByte;
+    destString[domainSize] = eepromByte;
     eepromAddress++;
-    urlString++;
+    domainSize++;
   } while(eepromByte != '\0');
 
-  return eepromAddress - 1;
+  // Return size not including null stop character
+  return domainSize - 1;
+}
+
+uint16_t LoadPort()
+{
+  // Check if URL data is set
+  if(!HaveURL())
+  {
+    return -1;
+  }
+
+  return GetEEPROMWord(GetEEPROMWord(PERSISTENT_MEMORY_PORT_ADDRESS));
+}
+
+uint16_t LoadPort(char* destString)
+{
+  // Check if URL data is set
+  if(!HaveURL())
+  {
+    return -1;
+  }
+
+  uint16_t port = GetEEPROMWord(GetEEPROMWord(PERSISTENT_MEMORY_PORT_ADDRESS));
+  return sprintf(destString, "%d", port);
+}
+
+uint16_t LoadEndpoint(char* destString)
+{
+  uint16_t endpointSize = 0;
+  uint8_t eepromByte = '\0';
+  // Get start address for endpoint string
+  uint16_t eepromAddress = GetEEPROMWord(PERSISTENT_MEMORY_ENDPOINT_ADDRESS);
+
+  // If start address is invalid, return empty string
+  if(!HaveURL())
+  {
+    destString[0] = '\0';
+    return endpointSize;
+  }
+
+  // Load null-terminated string from EEPROM
+  do
+  {
+    eepromByte = EEPROM.read(eepromAddress);
+    destString[endpointSize] = eepromByte;
+    eepromAddress++;
+    endpointSize++;
+  } while(eepromByte != '\0');
+
+  // Return size not including null stop character
+  return endpointSize - 1;
 }
 
 void setup()
@@ -193,27 +280,26 @@ void setup()
   // Check if persistent memory appears to contain data for this application
   if(PERSISTENT_MEMORY_VERSION != EEPROM.read(0))
   {
-    EEPROM.write(PERSISTENT_MEMORY_DOMAIN_ADDRESS, 0); // Indicates empty string
-    EEPROM.write(PERSISTENT_MEMORY_DOMAIN_ADDRESS+1, 0); // Indicates empty string
+    SetEEPROMWord(PERSISTENT_MEMORY_DOMAIN_ADDRESS, 0); // Indicates no domain
     EEPROM.write(0, PERSISTENT_MEMORY_VERSION);
   }
 
   if(0 == ether.begin(sizeof Ethernet::buffer, mymac, 8))
   {
-    Serial.println("Failed to access Ethernet controller");
+    Serial.println(F("Failed to access Ethernet controller"));
   }
 #if STATIC
   ether.staticSetup(myip, gwip);
 #else
   if(false == ether.dhcpSetup())
   {
-    Serial.println("DHCP failed");
+    Serial.println(F("DHCP failed"));
   }
 #endif
 
-  ether.printIp("IP:  ", ether.myip);
-  ether.printIp("GW:  ", ether.gwip);
-  ether.printIp("DNS: ", ether.dnsip);
+  ether.printIp(F("IP:  "), ether.myip);
+  ether.printIp(F("GW:  "), ether.gwip);
+  ether.printIp(F("DNS: "), ether.dnsip);
 
   stackLight.setPattern(RED,
                         StackLight::PULSE,
@@ -247,7 +333,7 @@ void loop()
 
     if (strncmp("GET / ", data, 6) == 0)
     {
-      Serial.println("GET /:");
+      Serial.println(F("GET /:"));
       Serial.println(data);
       sendData = config_html;
       if(sizeof(config_html) < sz)
@@ -274,7 +360,7 @@ void loop()
     }
     else if (strncmp("GET /favicon.ico", data, 16) == 0)
     {
-      Serial.println("GET /favicon.ico:");
+      Serial.println(F("GET /favicon.ico:"));
       Serial.println(data);
       sendData = favicon_ico;
       if(sizeof(favicon_ico) < sz)
@@ -301,17 +387,18 @@ void loop()
     }
     else if (strncmp("GET /apiURL", data, 10) == 0)
     {
-      Serial.println("GET /apiURL:");
+      Serial.println(F("GET /apiURL:"));
       Serial.println(data);
       generalMemCopy = false; // Doing memcopy here to build response
       sz = sizeof(http_OK);
       memcpy_P(data, http_OK, sz);
-      uint16_t urlSize = LoadURL(data+sz-1); // Start at null character from header string
-      sz += (urlSize - 2); // Don't send null characters
+      uint16_t urlSize = 0;
+      urlSize = LoadURL(data+sz-1); // Start at null character from header string
+      sz += (urlSize-1); // Don't send null characters
     }
     else if (strncmp("PUT /apiURL", data, 10) == 0)
     {
-      Serial.println("PUT /apiURL:");
+      Serial.println(F("PUT /apiURL:"));
       Serial.println(data);
       sendData = http_OK;
       if(sizeof(http_OK) < sz)
@@ -325,7 +412,7 @@ void loop()
     {
       if(pendingPut)
       {
-        Serial.println("PUT data:");
+        Serial.println(F("PUT data:"));
         Serial.println(data);
         if(SaveURL(data))
         {
@@ -342,7 +429,7 @@ void loop()
       else
       {
         // Page not found
-        Serial.println("???:");
+        Serial.println(F("???:"));
         Serial.println(data);
         sendData = http_Unauthorized;
         if(sizeof(http_Unauthorized) < sz)

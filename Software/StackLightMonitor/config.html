@@ -52,7 +52,7 @@ function ConnectToServer()
   };
 
   client.send();
-};
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 ///  @brief Removes all jobs from job selector field and sets URL field color
@@ -67,7 +67,7 @@ function ClearJobs()
     jobsSelector.remove(0);
   }
   document.getElementById("server").style.backgroundColor="#ddaaaa";
-};
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 ///  @brief Populates job selector field with job names and URLs and resets
@@ -92,7 +92,7 @@ function GetJobs(apiResponse)
       jobsSelector.add(option);
     }
   }
-};
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 ///  @brief Validates configuration fields by sending request to job API
@@ -125,9 +125,9 @@ function Save()
     // but before the API URL endpoint
     var portSepIndex = protocolStripURL.search(":");
     var port = 80;
-    if(portSepIndex !== -1 && portSepIndex < endpointSepIndex)
+    if(portSepIndex !== -1 && ((portSepIndex + 1) < endpointSepIndex))
     {
-      port = parseInt(protocolStripURL.substring(portSepIndex,endpointSepIndex));
+      port = parseInt(protocolStripURL.substring(portSepIndex + 1,endpointSepIndex));
       // Port must be 16-bit
       if(port > 65535)
       {
@@ -143,7 +143,7 @@ function Save()
     }
 
     // Reconstruct queryURL to ensure the parsed URL will work
-    queryURL = domainString + ":" + port.toString() + endpointString;
+    queryURL = "http://" + domainString + ":" + port.toString() + endpointString;
 
     // Check if URL is accessible
     apiRequest.open("GET", CORSPROXY+queryURL, false);
@@ -165,11 +165,17 @@ function Save()
     var arduinoRequest = new XMLHttpRequest();
     try
     {
-      var parsedData = domainString + '\n' + port + '\n' + endpointString;
-      alert(parsedData);
+      var parsedData = domainString + "\n" + port + "\n" + endpointString;
       arduinoRequest.open("PUT", "/apiURL", false);
-      arduinoRequest.send(queryURL);
-      alert("Set job API URL to:\n" + queryURL);
+      arduinoRequest.send(parsedData);
+      if(arduinoRequest.status !== 200)
+      {
+        alert("API URL save was rejected:\n" + domainString + ":" + port + endpointString);
+      }
+      else
+      {
+        alert("Set job API URL to:\n" + domainString + ":" + port + endpointString);
+      }
     }
     catch(e)
     {
@@ -177,7 +183,7 @@ function Save()
       alert("Could not save configuration");
     }
   }
-};
+}
 
 // Get active configuration on page load
 window.onload = function()
