@@ -21,7 +21,7 @@ StackLight::StackLight(const uint8_t nModules, const uint8_t* modulePins):
 
     // Initialize pin modes
     pinMode(m_modulePins[i], OUTPUT);
-    analogWrite(modulePins[i], 0);
+    analogWrite(modulePins[i], 64);
   }
 
   // Populate Gamma correction lookup table

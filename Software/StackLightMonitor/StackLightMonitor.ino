@@ -306,20 +306,22 @@ void setup()
                         255,
                         1000);
   stackLight.setPattern(YELLOW,
-                        StackLight::PULSE,
-                        255,
-                        2000);
+                        StackLight::SOLID,
+                        0);
   stackLight.setPattern(GREEN,
-                        StackLight::PULSE,
-                        255,
-                        4000);
+                        StackLight::SOLID,
+                        0);
 }
 
 void loop()
 {
-  word pos = ether.packetLoop(ether.packetReceive());
   static bool pendingPut = false;
   bool generalMemCopy = true;
+
+  static bool haveDNS = false;
+  static long lastDNSLookup = 0;
+
+  word pos = ether.packetLoop(ether.packetReceive());
 
   if (pos)
   {
@@ -335,7 +337,7 @@ void loop()
     {
       Serial.println(F("GET /:"));
       Serial.println(data);
-      sendData = config_html;
+      sendData = const_cast<char*>(config_html);
       if(sizeof(config_html) < sz)
       {
         sz = sizeof(config_html);
@@ -362,7 +364,7 @@ void loop()
     {
       Serial.println(F("GET /favicon.ico:"));
       Serial.println(data);
-      sendData = favicon_ico;
+      sendData = const_cast<char*>(favicon_ico);
       if(sizeof(favicon_ico) < sz)
       {
         sz = sizeof(favicon_ico);
@@ -400,7 +402,7 @@ void loop()
     {
       Serial.println(F("PUT /apiURL:"));
       Serial.println(data);
-      sendData = http_OK;
+      sendData = const_cast<char*>(http_OK);
       if(sizeof(http_OK) < sz)
       {
         sz = sizeof(http_OK);
@@ -416,12 +418,23 @@ void loop()
         Serial.println(data);
         if(SaveURL(data))
         {
-          sendData = http_OK;
+          sendData = const_cast<char*>(http_OK);
           sz = sizeof(http_OK);
+          haveDNS = false;
+          stackLight.setPattern(YELLOW,
+                                StackLight::PULSE,
+                                255,
+                                1000);
+          stackLight.setPattern(RED,
+                                StackLight::SOLID,
+                                0);
+          stackLight.setPattern(GREEN,
+                                StackLight::SOLID,
+                                0);
         }
         else
         {
-          sendData = http_BadRequest;
+          sendData = const_cast<char*>(http_BadRequest);
           sz = sizeof(http_BadRequest);
         }
         complete = true;
@@ -431,7 +444,7 @@ void loop()
         // Page not found
         Serial.println(F("???:"));
         Serial.println(data);
-        sendData = http_Unauthorized;
+        sendData = const_cast<char*>(http_Unauthorized);
         if(sizeof(http_Unauthorized) < sz)
         {
           sz = sizeof(http_Unauthorized);
@@ -449,6 +462,33 @@ void loop()
     ether.httpServerReply_with_flags(sz,TCP_FLAGS_ACK_V|TCP_FLAGS_PUSH_V);
     ether.httpServerReply_with_flags(0,TCP_FLAGS_ACK_V|TCP_FLAGS_FIN_V);
     startPoint = 0;
+  }
+
+  if( !haveDNS
+      && HaveURL()
+      && (millis() - lastDNSLookup) > 5000 )
+  {
+    lastDNSLookup = millis();
+    LoadDomain(Ethernet::buffer+60);
+    if(!ether.dnsLookup(Ethernet::buffer+60,true))
+    {
+      Serial.println(F("DNS lookup failed"));
+    }
+    else
+    {
+      ether.printIp(F("Server: "), ether.hisip);
+      haveDNS = true;
+      stackLight.setPattern(GREEN,
+                            StackLight::PULSE,
+                            255,
+                            1000);
+      stackLight.setPattern(YELLOW,
+                            StackLight::SOLID,
+                            0);
+      stackLight.setPattern(RED,
+                            StackLight::SOLID,
+                            0);
+    }
   }
 
   // put your main code here, to run repeatedly:
