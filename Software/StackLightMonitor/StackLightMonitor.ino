@@ -402,54 +402,43 @@ void loop()
     {
       Serial.println(F("PUT /apiURL:"));
       Serial.println(data);
-      sendData = const_cast<char*>(http_OK);
-      if(sizeof(http_OK) < sz)
+      char* headerEnd = strstr(data, "\r\n\r\n");
+      Serial.print(F("After Header: "));
+      Serial.println(headerEnd + 4);
+      if(SaveURL(headerEnd + 4))
       {
+        sendData = const_cast<char*>(http_OK);
         sz = sizeof(http_OK);
-        complete = true;
-        pendingPut = true;
-      }
-    }
-    else
-    {
-      if(pendingPut)
-      {
-        Serial.println(F("PUT data:"));
-        Serial.println(data);
-        if(SaveURL(data))
-        {
-          sendData = const_cast<char*>(http_OK);
-          sz = sizeof(http_OK);
-          haveDNS = false;
-          stackLight.setPattern(YELLOW,
-                                StackLight::PULSE,
-                                255,
-                                1000);
-          stackLight.setPattern(RED,
-                                StackLight::SOLID,
-                                0);
-          stackLight.setPattern(GREEN,
-                                StackLight::SOLID,
-                                0);
-        }
-        else
-        {
-          sendData = const_cast<char*>(http_BadRequest);
-          sz = sizeof(http_BadRequest);
-        }
-        complete = true;
+        haveDNS = false;
+        Serial.println(F("Pending DNS"));
+        stackLight.setPattern(YELLOW,
+                              StackLight::PULSE,
+                              255,
+                              1000);
+        stackLight.setPattern(RED,
+                              StackLight::SOLID,
+                              0);
+        stackLight.setPattern(GREEN,
+                              StackLight::SOLID,
+                              0);
       }
       else
       {
-        // Page not found
-        Serial.println(F("???:"));
-        Serial.println(data);
-        sendData = const_cast<char*>(http_Unauthorized);
-        if(sizeof(http_Unauthorized) < sz)
-        {
-          sz = sizeof(http_Unauthorized);
-          complete = true;
-        }
+        sendData = const_cast<char*>(http_BadRequest);
+        sz = sizeof(http_BadRequest);
+      }
+      complete = true;
+    }
+    else
+    {
+      // Page not found
+      Serial.println(F("???:"));
+      Serial.println(data);
+      sendData = const_cast<char*>(http_Unauthorized);
+      if(sizeof(http_Unauthorized) < sz)
+      {
+        sz = sizeof(http_Unauthorized);
+        complete = true;
       }
     }
 
