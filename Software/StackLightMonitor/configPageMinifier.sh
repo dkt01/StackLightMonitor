@@ -7,7 +7,7 @@ CONFIG_HEADER="config_html.h"
 VAR_TYPE="const PROGMEM char"
 VAR_NAME="config_html[]"
 
-HTTP_HEADER="HTTP/1.0 200 OK\r\nContent-Type: text/html\r\nPragma: no-cache\r\n\r\n"
+HTTP_HEADER="HTTP/1.0 200 OK\r\nContent-Type: text/html\r\nContent-Encoding: gzip\r\nPragma: no-cache\r\n\r\n"
 
 # Get directory of generator script
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -36,17 +36,18 @@ then
   exit 1
 fi
 
-# Escape backslashes
-sed -i '' -e 's/\\/\\\\/g' "$DIR/$CONFIG_PAGE_MIN"
-# Escape double quotes
-sed -i '' -e 's/"/\\"/g' "$DIR/$CONFIG_PAGE_MIN"
 # Remove whitespace at beginning of lines
 sed -i '' -e 's/^ *//' "$DIR/$CONFIG_PAGE_MIN"
-# Replace newlines with '\n' literal
-sed -i '' -e ':a' -e 'N' -e '$!ba' -e 's/\n/\\n/g' "$DIR/$CONFIG_PAGE_MIN"
 # Remove any remaining newlines (should be only one at end of file)
 tr -d '\n' < "$DIR/$CONFIG_PAGE_MIN" > "$DIR/${CONFIG_PAGE_MIN}_"
 mv "$DIR/${CONFIG_PAGE_MIN}_" "$DIR/$CONFIG_PAGE_MIN"
+
+# Compress page content
+gzip --best -c "$DIR/${CONFIG_PAGE_MIN}" | hexdump -v -e '/1 "_x%02X"' | sed 's/_/\\/g' > "$DIR/${CONFIG_PAGE_MIN}_"
+
+# Remove any remaining newlines (should be only one at end of file)
+tr -d '\n' < "$DIR/${CONFIG_PAGE_MIN}_" > "$DIR/${CONFIG_PAGE_MIN}"
+rm "$DIR/${CONFIG_PAGE_MIN}_"
 
 # Write compressed html/js with http headers to c++ header file as constant string
 echo -n "$VAR_TYPE $VAR_NAME = \"$HTTP_HEADER" > "$DIR/$CONFIG_HEADER"

@@ -7,7 +7,7 @@ FAVICON_HEADER="favicon_ico.h"
 VAR_TYPE="const PROGMEM char"
 VAR_NAME="favicon_ico[]"
 
-HTTP_HEADER="HTTP/1.0 200 OK\r\nContent-Type: image/x-icon\r\nPragma: no-cache\r\n\r\n"
+HTTP_HEADER="HTTP/1.0 200 OK\r\nContent-Type: image/x-icon\r\nContent-Encoding: gzip\r\nPragma: no-cache\r\n\r\n"
 
 # Get directory of generator script
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -28,8 +28,10 @@ type html-minifier >/dev/null 2>&1 || \
 # Generate favicon icons at 16x16 and 32x32 resolutions
 convert "$DIR/$FAVICON_SVG" -transparent white -resize 32x32 -define icon:auto-resize="32,16" -colors 16 "$DIR/$FAVICON_ICO"
 
+# Compress favicon
+gzip --best -S .gz "$DIR/$FAVICON_ICO"
+
 # Write favicon to c++ header file as base64 encoded icon
 echo -n "$VAR_TYPE $VAR_NAME = \"$HTTP_HEADER" > "$DIR/$FAVICON_HEADER"
-hexdump -v -e '"\\" "x" 1/1 "%02X" "\n"' "$DIR/$FAVICON_ICO" | tr -d '\n' >> "$DIR/$FAVICON_HEADER"
-# cat "$DIR/$FAVICON_ICO" | base64 | tr -d '\n' >> "$DIR/$FAVICON_HEADER"
+hexdump -v -e '"\\" "x" 1/1 "%02X" "\n"' "$DIR/${FAVICON_ICO}.gz" | tr -d '\n' >> "$DIR/$FAVICON_HEADER"
 echo "\";" >> "$DIR/$FAVICON_HEADER"
