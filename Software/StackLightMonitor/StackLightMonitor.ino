@@ -6,15 +6,18 @@
 #include "config_html.h"
 #include "favicon_ico.h"
 
+#define DNS_RETRY_INTERVAL_MS 5000
+#define SERVER_POLL_INTERVAL_MS 10000
+
 #define STATIC 0  // set to 1 to disable DHCP (adjust myip/gwip values below)
 #define BUFFERSIZE 1024
 
 #if STATIC
 // ethernet interface ip address
-static byte myip[] = { 
+static byte myip[] = {
   192,168,1,253 };
 // gateway ip address
-static byte gwip[] = { 
+static byte gwip[] = {
   192,168,1,254 };
 #endif
 
@@ -40,6 +43,10 @@ byte Ethernet::buffer[BUFFERSIZE]; // tcp/ip send and receive buffer
 const uint8_t modulePins[3] = {RPIN, YPIN, GPIN};
 StackLight stackLight = StackLight(3, modulePins);
 
+////////////////////////////////////////////////////////////////////////////////
+///////////////////////////// HTTP Response Headers ////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
 const char http_OK[] PROGMEM =
 "HTTP/1.0 200 OK\r\n"
 "Content-Type: text/html\r\n"
@@ -53,6 +60,24 @@ const char http_Unauthorized[] PROGMEM =
 "HTTP/1.0 401 Unauthorized\r\n"
 "Content-Type: text/html\r\n\r\n"
 "<h1>401 Unauthorized</h1>";
+
+////////////////////////////////////////////////////////////////////////////////
+///////////////////////////// API Query Components /////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+const char http_Get_Prefix[] PROGMEM =
+"GET ";
+
+const char http_Get_Middle[] PROGMEM =
+" HTTP/1.0\r\nHost: ";
+
+const char http_Get_Suffix[] PROGMEM =
+"\r\nAccept: text/html\r\n\r\n";
+
+
+////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////// EEPROM Access ////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 
 uint16_t GetEEPROMWord(uint16_t address)
 {
@@ -132,6 +157,7 @@ bool SaveURL(char* urlString)
     // Port is decimal ascii
     port *= 10;
     port += charVal;
+    ether.hisport = port;
   }
 
   // Write pointer to domain string
@@ -231,7 +257,9 @@ uint16_t LoadPort()
     return -1;
   }
 
-  return GetEEPROMWord(GetEEPROMWord(PERSISTENT_MEMORY_PORT_ADDRESS));
+  uint16_t port = GetEEPROMWord(GetEEPROMWord(PERSISTENT_MEMORY_PORT_ADDRESS));
+  ether.hisport = port;
+  return port;
 }
 
 uint16_t LoadPort(char* destString)
@@ -272,6 +300,43 @@ uint16_t LoadEndpoint(char* destString)
   // Return size not including null stop character
   return endpointSize - 1;
 }
+
+
+////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////// API Query Helpers //////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+static uint16_t FillServerQuery(uint8_t sessionID)
+{
+  // Create API query in payload
+  uint8_t* startPos = EtherCard::tcpOffset();
+  uint16_t len = sizeof(http_Get_Prefix) - 1;
+  memcpy_P(startPos, http_Get_Prefix, len);
+  len += LoadEndpoint(startPos+len);
+  memcpy_P(startPos + len, http_Get_Middle, sizeof(http_Get_Middle));
+  len += sizeof(http_Get_Middle) - 1;
+  len += LoadDomain(startPos + len);
+  memcpy_P(startPos + len, http_Get_Suffix, sizeof(http_Get_Suffix));
+  len += sizeof(http_Get_Suffix) - 1;
+  return len;
+}
+
+static uint8_t ReceiveServerResponse( uint8_t sessionID,
+                                      uint8_t flags,
+                                      uint16_t offset,
+                                      uint16_t length )
+{
+  Ethernet::buffer[offset+length] = '\0';
+  Serial.println(F("Request callback:"));
+  Serial.println(F("Content:"));
+  Serial.println((char*)(Ethernet::buffer+offset));
+  return 0; // Not used for anything
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////// Main Functions ////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 
 void setup()
 {
@@ -320,6 +385,7 @@ void loop()
 
   static bool haveDNS = false;
   static long lastDNSLookup = 0;
+  static long lastServerPoll = 0;
 
   word pos = ether.packetLoop(ether.packetReceive());
 
@@ -455,7 +521,8 @@ void loop()
 
   if( !haveDNS
       && HaveURL()
-      && (millis() - lastDNSLookup) > 5000 )
+      && (millis() - lastDNSLookup) > DNS_RETRY_INTERVAL_MS
+      && ether.isLinkUp() )
   {
     lastDNSLookup = millis();
     LoadDomain(Ethernet::buffer+60);
@@ -478,6 +545,14 @@ void loop()
                             StackLight::SOLID,
                             0);
     }
+  }
+
+  if( haveDNS
+      && HaveURL()
+      && (millis() - lastServerPoll) > SERVER_POLL_INTERVAL_MS )
+  {
+    ether.clientTcpReq(ReceiveServerResponse, FillServerQuery, LoadPort());
+    lastServerPoll = millis();
   }
 
   // put your main code here, to run repeatedly:
