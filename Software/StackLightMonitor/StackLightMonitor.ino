@@ -401,13 +401,14 @@ void loop()
 
     if (strncmp("GET / ", data, 6) == 0)
     {
+      pendingPut = false;
+
       Serial.println(F("GET /:"));
       Serial.println(data);
       sendData = const_cast<char*>(config_html);
       if(sizeof(config_html) < sz)
       {
         sz = sizeof(config_html);
-        complete = true;
       }
       else
       {
@@ -428,6 +429,8 @@ void loop()
     }
     else if (strncmp("GET /favicon.ico", data, 16) == 0)
     {
+      pendingPut = false;
+
       Serial.println(F("GET /favicon.ico:"));
       Serial.println(data);
       sendData = const_cast<char*>(favicon_ico);
@@ -455,6 +458,8 @@ void loop()
     }
     else if (strncmp("GET /apiURL", data, 10) == 0)
     {
+      pendingPut = false;
+
       Serial.println(F("GET /apiURL:"));
       Serial.println(data);
       generalMemCopy = false; // Doing memcopy here to build response
@@ -466,6 +471,8 @@ void loop()
     }
     else if (strncmp("PUT /apiURL", data, 10) == 0)
     {
+      pendingPut = false;
+
       Serial.println(F("PUT /apiURL:"));
       Serial.println(data);
       char* headerEnd = strstr(data, "\r\n\r\n");
@@ -488,12 +495,52 @@ void loop()
                               StackLight::SOLID,
                               0);
       }
+      else if('\0' == *(headerEnd + 4))
+      {
+        // 2-part put message
+        Serial.println(F("Pending PUT"));
+        sendData = const_cast<char*>(http_OK);
+        sz = sizeof(http_OK);
+        pendingPut = true;
+      }
       else
       {
         sendData = const_cast<char*>(http_BadRequest);
         sz = sizeof(http_BadRequest);
       }
-      complete = true;
+    }
+    else if(true == pendingPut)
+    {
+      pendingPut = false;
+
+      Serial.println(F("PUT pt2"));
+      Serial.println(data);
+      if(SaveURL(data))
+      {
+        sendData = const_cast<char*>(http_OK);
+        sz = sizeof(http_OK);
+        haveDNS = false;
+        Serial.println(F("Pending DNS"));
+        stackLight.setPattern(YELLOW,
+                              StackLight::PULSE,
+                              255,
+                              1000);
+        stackLight.setPattern(RED,
+                              StackLight::SOLID,
+                              0);
+        stackLight.setPattern(GREEN,
+                              StackLight::SOLID,
+                              0);
+      }
+      else
+      {
+        Serial.println(F("Not PUT pt2!"));
+        sendData = const_cast<char*>(http_Unauthorized);
+        if(sizeof(http_Unauthorized) < sz)
+        {
+          sz = sizeof(http_Unauthorized);
+        }
+      }
     }
     else
     {
@@ -504,7 +551,6 @@ void loop()
       if(sizeof(http_Unauthorized) < sz)
       {
         sz = sizeof(http_Unauthorized);
-        complete = true;
       }
     }
 

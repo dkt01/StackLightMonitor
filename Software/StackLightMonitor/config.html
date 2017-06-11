@@ -171,7 +171,7 @@ function Save()
   {
     var jobsSelector = document.getElementById("job");
     var queryURL = jobsSelector.options[jobsSelector.selectedIndex].value;
-    queryURL += "/lastBuild/api/json?tree=building,number,result,url";
+    queryURL += "/lastBuild/api/json?tree=building,result";
 
     // Strip off protocol identifier.  Should be http:// or https:// or not provided
     var protocolSepIndex = queryURL.search("://");
@@ -305,7 +305,7 @@ window.onload = function()
     // Format is [serverURL]/job/[jobName]/[apiSuffix]
     // Make sure a server name exists at beginning of URL
     // Server is not validated here
-    if((i - 2) <= 0)
+    if(i <= 1)
     {
       return;
     }
@@ -316,7 +316,7 @@ window.onload = function()
     // Populate configuration fields
     var dummyJobs = {jobs:[{name:jobName,url:jobURL}]};
     GetJobs(dummyJobs);
-    document.getElementById("server").value = serverName;
+    document.getElementById("server").value = "http://"+serverName;
   };
 
   client.send();
