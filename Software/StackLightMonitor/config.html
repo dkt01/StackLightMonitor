@@ -1,9 +1,17 @@
 <!DOCTYPE html>
 <html>
   <head>
+    <title>Stack Light Monitor</title>
     <script>
 // Proxy to circumvent CORS protection on sites
 var CORSPROXY = "https://cors-anywhere.herokuapp.com/";
+// Timeout for connecting to Jenkins server in milliseconds
+var CONNECTTIMEOUT = 3000;
+// Set to CORS proxy url when using CORS proxy
+var baseURL = "";
+
+var CONNECT_ERROR_MSG = "Could not get jobs from Jenkins server.\nCheck that the server URL is correct (including \"http://\") and the server is available.";
+
 ////////////////////////////////////////////////////////////////////////////////
 ///  @brief Attempts a connection to the server specified in the server URL
 ///         field.  If the server has an accessible API, jobs are fetched and
@@ -18,20 +26,44 @@ function ConnectToServer()
 
   ClearJobs();
 
+  // Clear base url so it is only set when using CORS proxy
+  baseURL = "";
+
+  ConnectToServerByURL(url, false);
+}
+
+function ConnectToServerByURL(url, corsProxy)
+{
   // Use XMLHttpRequest to get JSON data from Jenkins API.  This supports older
   // web browsers and sidesteps CORS restrictions
   var client = new XMLHttpRequest();
   try
   {
-    client.open("GET", CORSPROXY+url);
+    client.open("GET", url);
     client.setRequestHeader("X-Requested-With", "XMLHttpRequest");
+    client.setRequestHeader("Content-Type", "text/plain");
   }
   catch(e)
   {
     // This indicates bad URL
     console.log(e);
+    ConnectToServerByURL(CORSPROXY+url, true);
     return;
   }
+
+  // Handle timeout condition
+  client.timeout = CONNECTTIMEOUT;
+  client.ontimeout = function()
+  {
+    if(true === corsProxy)
+    {
+      alert(CONNECT_ERROR_MSG);
+    }
+    else
+    {
+      ConnectToServerByURL(CORSPROXY+url, true);
+    }
+  };
 
   client.onload = function()
   {
@@ -44,11 +76,43 @@ function ConnectToServer()
     {
       // This indicates non-api data
       console.log(e);
+      if(false === corsProxy)
+      {
+        ConnectToServerByURL(CORSPROXY+url, true);
+      }
+      else
+      {
+        alert(CONNECT_ERROR_MSG)
+      }
       return;
     }
 
+    // By this point we know the url to use (with or without proxy)
+    if(true === corsProxy)
+    {
+      baseURL = CORSPROXY;
+    }
+    else
+    {
+      baseURL = "";
+    }
     // Use json data to set jobs selector
     GetJobs(jsonData);
+  };
+
+  // Handle errors returned by request
+  client.onerror = function()
+  {
+    if(false === corsProxy)
+    {
+      ConnectToServerByURL(CORSPROXY+url, true);
+    }
+    else
+    {
+      console.log(exception);
+      alert(CONNECT_ERROR_MSG);
+    }
+    return;
   };
 
   client.send();
@@ -146,7 +210,7 @@ function Save()
     queryURL = "http://" + domainString + ":" + port.toString() + endpointString;
 
     // Check if URL is accessible
-    apiRequest.open("GET", CORSPROXY+queryURL, false);
+    apiRequest.open("GET", baseURL+queryURL, false);
     apiRequest.setRequestHeader("X-Requested-With", "XMLHttpRequest");
     apiRequest.send();
     returnStatus = apiRequest.status;
