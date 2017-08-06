@@ -29,6 +29,7 @@ byte Ethernet::buffer[BUFFERSIZE]; // tcp/ip send and receive buffer
 #define RED    0
 #define YELLOW 1
 #define GREEN  2
+#define NUMCOLORS 3
 
 #define RPIN 9
 #define YPIN 6
@@ -42,6 +43,15 @@ byte Ethernet::buffer[BUFFERSIZE]; // tcp/ip send and receive buffer
 
 const uint8_t modulePins[3] = {RPIN, YPIN, GPIN};
 StackLight stackLight = StackLight(3, modulePins);
+
+uint8_t buildStatus;
+
+#define BUILDSTATUS_SUCCESS    0x01
+#define BUILDSTATUS_UNSTABLE   0x02
+#define BUILDSTATUS_FAILURE    0x04
+#define BUILDSTATUS_OTHER      0x08
+#define BUILDSTATUS_UNKNOWN    0x10
+#define BUILDSTATUS_BUILDING   0x80
 
 ////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////// HTTP Response Headers ////////////////////////////
@@ -326,11 +336,220 @@ static uint8_t ReceiveServerResponse( uint8_t sessionID,
                                       uint16_t offset,
                                       uint16_t length )
 {
+  char* responseStart = (char*)(Ethernet::buffer + offset);
   Ethernet::buffer[offset+length] = '\0';
   Serial.println(F("Request callback:"));
-  Serial.println(F("Content:"));
-  Serial.println((char*)(Ethernet::buffer+offset));
+  // Serial.println(F("Content:"));
+  // Serial.println(responseStart);
+
+  // Find beginning of JSON
+  size_t jsonStartIdx = strcspn(responseStart, "{");
+  responseStart += jsonStartIdx;
+  if(*responseStart != '{')
+  {
+    Serial.println(F("JSON not found!"));
+    return 0;
+  }
+
+  char* key = NULL;
+  uint8_t keyLen = 0;
+  char* value = NULL;
+  uint8_t valueLen = 0;
+
+  while(getKVPair(responseStart, key, keyLen, value, valueLen))
+  {
+    if(keyLen > 0 && valueLen > 0 && 0 == strncmp(key,"building",keyLen))
+    {
+      if(0 == strncmp(value,"true",valueLen))
+      {
+        // Set building flag
+        buildStatus |= BUILDSTATUS_BUILDING;
+        Serial.println(F("Building!"));
+      }
+      else
+      {
+        // Clear building flag
+        uint8_t statusMask = ~BUILDSTATUS_BUILDING;
+        buildStatus &= statusMask;
+        Serial.println(F("Not Building!"));
+      }
+    }
+    else if(keyLen > 0 && valueLen > 0 && 0 == strncmp(key,"result",keyLen))
+    {
+      if(0 == strncmp(value,"\"SUCCESS\"",valueLen))
+      {
+        // Clear all status flags except success and building
+        uint8_t statusMask = BUILDSTATUS_BUILDING | BUILDSTATUS_SUCCESS;
+        buildStatus &= statusMask;
+        // Set success flag
+        buildStatus |= BUILDSTATUS_SUCCESS;
+        Serial.println(F("Build: SUCCESS"));
+        Serial.print(buildStatus);
+      }
+      else if(0 == strncmp(value,"\"FAILURE\"",valueLen))
+      {
+        // Clear all status flags except failure and building
+        uint8_t statusMask = BUILDSTATUS_BUILDING | BUILDSTATUS_FAILURE;
+        buildStatus &= statusMask;
+        // Set failure flag
+        buildStatus |= BUILDSTATUS_FAILURE;
+        Serial.println(F("Build: FAILURE"));
+        Serial.print(buildStatus);
+      }
+      else if(0 == strncmp(value,"\"NOT_BUILT\"",valueLen))
+      {
+        // Clear all status flags except other and building
+        uint8_t statusMask = BUILDSTATUS_BUILDING | BUILDSTATUS_OTHER;
+        buildStatus &= statusMask;
+        // Set other flag
+        buildStatus |= BUILDSTATUS_OTHER;
+        Serial.println(F("Build: NOT_BUILT"));
+        Serial.print(buildStatus);
+      }
+      else if(0 == strncmp(value,"\"ABORTED\"",valueLen))
+      {
+        // Clear all status flags except other and building
+        uint8_t statusMask = BUILDSTATUS_BUILDING | BUILDSTATUS_OTHER;
+        buildStatus &= statusMask;
+        // Set other flag
+        buildStatus |= BUILDSTATUS_OTHER;
+        Serial.println(F("Build: ABORTED"));
+        Serial.print(buildStatus);
+      }
+      else if(0 == strncmp(value,"\"UNSTABLE\"",valueLen))
+      {
+        // Clear all status flags except failure and building
+        uint8_t statusMask = BUILDSTATUS_BUILDING | BUILDSTATUS_UNSTABLE;
+        buildStatus &= statusMask;
+        // Set unstable flag
+        buildStatus |= BUILDSTATUS_UNSTABLE;
+        Serial.println(F("Build: UNSTABLE"));
+        Serial.print(buildStatus);
+      }
+      else
+      {
+        // Do nothing and maintain previous status
+        Serial.println(F("Build: OTHER"));
+        Serial.print(buildStatus);
+      }
+    }
+    responseStart = value + valueLen + 1;
+  }
   return 0; // Not used for anything
+}
+
+bool getKVPair(char* responseStart, char*& key, uint8_t& keyLen, char*& value, uint8_t& valueLen)
+{
+  // Every key should start with a double quote and end with a double quote
+  size_t findOffset = strcspn(responseStart, "\"");
+  if(responseStart[findOffset] != '\"')
+  {
+    // No key found
+    return false;
+  }
+  // Key is always a string, so don't include the first double quote
+  key = responseStart + findOffset + 1;
+  responseStart = key;
+
+  findOffset = strcspn(responseStart, "\"");
+  if(responseStart[findOffset] != '\"')
+  {
+    // No key end found
+    return false;
+  }
+  keyLen = findOffset;
+  responseStart += findOffset;
+
+  // A colon will always appear immediately before the value
+  findOffset = strcspn(responseStart, ":");
+  if(responseStart[findOffset] != ':')
+  {
+    // No KV pair separator found
+    return false;
+  }
+  value = responseStart + findOffset + 1;
+  responseStart = value;
+
+  // Comma separates keys, end brace indicates end of selection
+  findOffset = strcspn(responseStart, ",}");
+  if(responseStart[findOffset] != ',' &&
+     responseStart[findOffset] != '}')
+  {
+    // No value end found
+    return false;
+  }
+  valueLen = findOffset;
+  return true;
+}
+
+void updatePaterns(StackLight& sl, uint8_t status)
+{
+  uint8_t illuminateColor = 0;
+  // While building, pulse light corresponding to previous build status
+  if(status & BUILDSTATUS_BUILDING)
+  {
+    if(status & BUILDSTATUS_SUCCESS)
+    {
+      illuminateColor = GREEN;
+    }
+    else if(status & BUILDSTATUS_FAILURE)
+    {
+      illuminateColor = RED;
+    }
+    else
+    {
+      illuminateColor = YELLOW;
+    }
+    for(uint8_t i = 0; i < NUMCOLORS; i++)
+    {
+      if(i == illuminateColor)
+      {
+        sl.setPattern(i, StackLight::PULSE, 255);
+      }
+      else
+      {
+        sl.setPattern(i, StackLight::SOLID, 0);
+      }
+    }
+  }
+  else
+  {
+    // Unknown flash all lights
+    if(status & BUILDSTATUS_UNKNOWN)
+    {
+      for(uint8_t i = 0; i < NUMCOLORS; i++)
+      {
+        sl.setPattern(i, StackLight::FLASH, 255);
+      }
+    }
+    // Solid corresponding to build status
+    else
+    {
+      if(status & BUILDSTATUS_SUCCESS)
+      {
+        illuminateColor = GREEN;
+      }
+      else if(status & BUILDSTATUS_FAILURE)
+      {
+        illuminateColor = RED;
+      }
+      else
+      {
+        illuminateColor = YELLOW;
+      }
+      for(uint8_t i = 0; i < NUMCOLORS; i++)
+      {
+        if(i == illuminateColor)
+        {
+          sl.setPattern(i, StackLight::SOLID, 255);
+        }
+        else
+        {
+          sl.setPattern(i, StackLight::SOLID, 0);
+        }
+      }
+    }
+  }
 }
 
 
@@ -341,6 +560,10 @@ static uint8_t ReceiveServerResponse( uint8_t sessionID,
 void setup()
 {
   Serial.begin(57600);
+
+  // Initialize to unknown build status
+  buildStatus = 0;
+  buildStatus |= BUILDSTATUS_UNKNOWN;
 
   // Check if persistent memory appears to contain data for this application
   if(PERSISTENT_MEMORY_VERSION != EEPROM.read(0))
@@ -598,6 +821,7 @@ void loop()
       && (millis() - lastServerPoll) > SERVER_POLL_INTERVAL_MS )
   {
     ether.clientTcpReq(ReceiveServerResponse, FillServerQuery, LoadPort());
+    updatePaterns(stackLight, buildStatus);
     lastServerPoll = millis();
   }
 
