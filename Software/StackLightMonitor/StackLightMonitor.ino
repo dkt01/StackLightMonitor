@@ -33,6 +33,8 @@
 #define STATIC 0  // set to 1 to disable DHCP (adjust myip/gwip values below)
 #define BUFFERSIZE 1024
 
+#define HTTP_SERVER_PORT 80 // Port to respond to HTTP config page requests on
+
 #if STATIC
 // ethernet interface ip address
 static byte myip[] = {
@@ -289,7 +291,7 @@ uint16_t LoadPort()
   }
 
   uint16_t port = GetEEPROMWord(GetEEPROMWord(PERSISTENT_MEMORY_PORT_ADDRESS));
-  ether.hisport = port;
+  SetPort(port);
   return port;
 }
 
@@ -357,9 +359,13 @@ static uint8_t ReceiveServerResponse( uint8_t sessionID,
                                       uint16_t offset,
                                       uint16_t length )
 {
+  // Reset port to enable http server
+  SetPort(HTTP_SERVER_PORT);
+
   char* responseStart = (char*)(Ethernet::buffer + offset);
   Ethernet::buffer[offset+length] = '\0';
   Serial.println(F("Request callback:"));
+
   // Serial.println(F("Content:"));
   // Serial.println(responseStart);
 
@@ -573,6 +579,16 @@ void updatePaterns(StackLight& sl, uint8_t status)
   }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+/// @brief Sets new TCP port for ethercard library.  This is the port used for
+///        responses and requests
+/// @param newPort New port to listen on/send to
+////////////////////////////////////////////////////////////////////////////////
+void SetPort(uint16_t newPort)
+{
+  ether.hisport = newPort;
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////// Main Functions ////////////////////////////////
@@ -640,6 +656,8 @@ void loop()
     char* data = (char*) Ethernet::buffer + pos;
     char* sendData = NULL;
     bool complete = false;
+
+    Serial.println(pos);
 
     ether.httpServerReplyAck();
 
