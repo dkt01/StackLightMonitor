@@ -17,3 +17,5 @@ The following packages are necessary to run this software:
 ## Attribution
 
 Favicon is a derivative of ["Database" by Tinashe Mugayi](https://thenounproject.com/search/?q=database&creator=1554334&i=955064).  It is covered by the [Creative Commons 3.0 Attribution License](https://creativecommons.org/licenses/by/3.0/us/).
+
+Config page uses CSS from [Pure CSS](https://purecss.io).  It is covered by the [Yahoo! BSD License](https://github.com/yahoo/pure-site/blob/master/LICENSE.md).
