@@ -2,6 +2,11 @@
 
 [![Documentation Status](https://codedocs.xyz/dkt01/StackLightMonitor.svg)](https://codedocs.xyz/dkt01/StackLightMonitor/)
 
+[hackaday.io Project Page](https://hackaday.io/project/26995-stack-light-monitor)
+
+[<img src="https://www.youtube.com/yt/brand/media/image/YouTube-icon-full_color.png" width="30pt" alt="Demo Video">](https://youtu.be/2Hm4lpO7gss)
+Demo video
+
 Jenkins monitor using industrial stack light as output
 
 ## Software Dependencies
